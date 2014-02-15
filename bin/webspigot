@@ -1,0 +1,18 @@
+#!/usr/bin/env ruby
+require 'optparse'
+require 'webspigot'
+require 'pp'
+
+@optparser = OptionParser.new do |o|
+  o.banner = "Usage: webspigot"
+  o.parse!
+end
+
+def usage
+  puts @optparser
+  exit
+end
+
+ws = Webspigot.new
+ws.run
+pp ws
