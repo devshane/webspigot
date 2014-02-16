@@ -6,12 +6,13 @@ class Webspigot
   attr_accessor :search_phrase, :image_url
 
   def initialize(options)
+    @recent_urls = []
     @options = options
     @m = Mechanize.new
   end
 
-  def run(phrase=nil)
-    if phrase.nil?
+  def run
+    if @options[:search_phrases].empty?
       phrases = []
 
       # b  - Business
@@ -36,13 +37,11 @@ class Webspigot
         end
       end
       clean_phrases(phrases)
-      phrase = phrases.sample
+      @search_phrase = phrases.sample
+    else
+      @search_phrase = @options[:search_phrases].sample
     end
-    @search_phrase = phrase
-    @image_url = nil
-    while @image_url.nil?
-      @image_url = get_image_url(phrase)
-    end
+    @image_url = get_image_url(@search_phrase)
   end
 
   def save
@@ -53,10 +52,14 @@ class Webspigot
     rnd = (100000 + (99999 * rand)).to_i
     fname = "/tmp/spigot-#{rnd}#{ext}"
     #puts "fname: #{fname}"
-    File.open(fname, 'wb') do |f|
-      open(@image_url) do |image|
-        f.write(image.read)
+    begin
+      File.open(fname, 'wb') do |f|
+        open(@image_url) do |image|
+          f.write(image.read)
+        end
       end
+    rescue => e
+      log "error: #{e}"
     end
     fname
   end
@@ -72,12 +75,23 @@ class Webspigot
     @m.get("http://www.bing.com/images/search?q=#{enc}") do |page|
       page.body.scan(%r{,imgurl:&quot;(.*?)&quot;}).each do |thing|
         t = thing[0]
-        if t['.']
-          links << thing[0].gsub(/"/, '')
-        end
+        fn = t[t.rindex('/') + 1..-1]
+        links << t.gsub(/"/, '') if fn['.']
       end
     end
-    links.sample
+    u = links.sample
+    if @recent_urls.include?(u)
+      log "dupe: #{u}"
+      retries = 0
+      while retries < @options[:max_retries]
+        u = links.sample
+        break unless @recent_urls.include?(u)
+        log "dupe: #{u}"
+        retries += 1
+      end
+      log "lots of dupes!" if retries == @options[:max_retries]
+    end
+    u
   end
 
   def clean_phrases(phrases)

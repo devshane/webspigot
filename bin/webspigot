@@ -7,6 +7,8 @@ require 'pp'
   safe_mode: "OFF",
   blur_previous: true,
   blur_amount: '0x6',
+  search_phrases: [],
+  max_retries: 5,
   outfile: '/tmp/spigot-composite.png'
 }
 
@@ -21,18 +23,18 @@ def usage
 end
 
 def get_loc(w, h)
-  x = (w * rand).to_i - 200
-  y = (h * rand).to_i - 100
+  x = (w * rand).to_i - 400
+  y = (h * rand).to_i - 400
   [x, y]
+end
+
+unless ARGV[0].nil?
+  @options[:search_phrases] = ARGV[0].split(';')
 end
 
 ws = Webspigot.new(@options)
 while true
-  if ARGV[0].nil?
-    ws.run
-  else
-    ws.run(ARGV[0])
-  end
+  ws.run
   image_path = ws.save
   #puts "Search: #{ws.search_phrase}"
   #puts "Image : #{ws.image_url}"
@@ -45,6 +47,8 @@ while true
   if @options[:blur_previous]
     `convert #{@options[:outfile]} -blur #{@options[:blur_amount]} #{@options[:outfile]}`
   end
+  # add the search phrase
+  `convert #{image_path} -background black -fill white label:'          #{ws.search_phrase}' -append #{image_path}`
   # blur edges of current image
   `convert #{image_path} -alpha set -virtual-pixel transparent -channel A -blur 0x8 -level 50%,100% +channel #{image_path}.png`
   # compose blurred composite and current image
