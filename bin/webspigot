@@ -4,16 +4,62 @@ require 'webspigot'
 require 'pp'
 
 @options = {
-  safe_mode: "OFF",
-  blur_previous: true,
+  safe_mode: "STRICT",
+  blur_previous: false,
   blur_amount: '0x6',
+  monochrome_previous: false,
   search_phrases: [],
   max_retries: 5,
-  outfile: '/tmp/spigot-composite.png'
+  outfile: '/tmp/spigot-composite.png',
+  height: 1080,
+  width: 1920,
+  delay_between_images: 10
 }
 
 @optparser = OptionParser.new do |o|
   o.banner = "Usage: webspigot"
+  o.separator ""
+  o.separator "WebSpigot fetches random images based on Google News searches."
+  o.separator ""
+
+  o.on('-h', '--help', 'Display this message') { puts o; exit }
+
+  o.on('--height PIXELS', 'The height of the output image') do |height|
+    @options[:height] = height
+  end
+
+  o.on('--width PIXELS', 'The width of the output image') do |width|
+    @options[:width] = height
+  end
+
+  o.on('--delay SECONDS', 'Delay between images in seconds') do |delay|
+    @options[:delay_between_images] = delay.to_i
+  end
+
+  o.on('--blur-amount AMOUNT', 'When using --blur-previous, the amount of blurring to do') do |amount|
+    @options[:blur_amount] = amount
+  end
+
+  o.on('--blur-previous', 'Blur the previous images each time a new image is displayed') do |blur|
+    @options[:blur_previous] = true
+  end
+
+  o.on('--max-retries RETRIES', 'The number of times to retry getting an image') do |retries|
+    @options[:monochrome_previous] = retries
+  end
+
+  o.on('--monochrome-previous', 'Convert the previous images to monochrome each time a new image is displayed') do |mono|
+    @options[:monochrome_previous] = true
+  end
+
+  o.on('--outfile OUTFILE', 'The filename for the composite image') do |outfile|
+    @options[:outfile] = outfile
+  end
+
+  o.on('--safe-mode MODE', 'Set safe mode to MODE (OFF, DEMOTE, STRICT)') do |mode|
+    @options[:safe_mode] = mode
+  end
+
   o.parse!
 end
 
@@ -23,8 +69,8 @@ def usage
 end
 
 def get_loc(w, h)
-  x = (w * rand).to_i - 400
-  y = (h * rand).to_i - 400
+  x = [(w * rand).to_i - 400, 0].max
+  y = [(h * rand).to_i - 400, 0].max
   [x, y]
 end
 
@@ -32,31 +78,44 @@ unless ARGV[0].nil?
   @options[:search_phrases] = ARGV[0].split(';')
 end
 
+puts "options: #{@options}"
+
 ws = Webspigot.new(@options)
 while true
   ws.run
   image_path = ws.save
-  #puts "Search: #{ws.search_phrase}"
-  #puts "Image : #{ws.image_url}"
-  #puts "Saved : #{image_path}"
-  w = 1920
-  h = 1080
-  loc = get_loc(w, h)
+  unless image_path.nil? || image_path.empty?
+    begin
+      h = @options[:height]
+      w = @options[:width]
 
-  # blur the composite
-  if @options[:blur_previous]
-    `convert #{@options[:outfile]} -blur #{@options[:blur_amount]} #{@options[:outfile]}`
+      loc = get_loc(w, h)
+
+      # monochrome the composite
+      if @options[:monochrome_previous]
+        `convert #{@options[:outfile]} -monochrome #{@options[:outfile]}`
+      end
+
+      # blur the composite
+      if @options[:blur_previous]
+        `convert #{@options[:outfile]} -blur #{@options[:blur_amount]} #{@options[:outfile]}`
+      end
+
+      # blur edges of current image
+      `convert #{image_path} -alpha set -virtual-pixel transparent -channel A -blur 0x8 -level 50%,100% +channel #{image_path}.png`
+
+      # compose composite and current image
+      `convert -background black -page #{w}x#{h} #{@options[:outfile]} -page +#{loc[0]}+#{loc[1]} #{image_path}.png -flatten #{@options[:outfile]}`
+
+      # add the search phrase
+      `convert #{@options[:outfile]} -pointsize 15 -fill '#000' -draw 'rectangle 0,#{h - 20},#{w},#{w}' -gravity south -stroke '#777C' -strokewidth 2 -annotate 0 "#{ws.search_phrase}" -stroke none -fill white -annotate 0 "    #{ws.search_phrase}    " #{@options[:outfile]}`
+
+      # cleanup
+      Dir.glob("#{image_path}*").each { |f| File.delete(f) }
+    rescue => e
+      puts "error: #{e}"
+    end
+    sleep @options[:delay_between_images]
   end
-  # add the search phrase
-  `convert #{image_path} -background black -fill white label:'          #{ws.search_phrase}' -append #{image_path}`
-  # blur edges of current image
-  `convert #{image_path} -alpha set -virtual-pixel transparent -channel A -blur 0x8 -level 50%,100% +channel #{image_path}.png`
-  # compose blurred composite and current image
-  `convert -background black -page #{w}x#{h} #{@options[:outfile]} -page +#{loc[0]}+#{loc[1]} #{image_path}.png -flatten #{@options[:outfile]}`
-
-  #`feh --bg-fill #{@outfile}`
-  #puts "cleaning up"
-  File.delete(image_path)
-  File.delete("#{image_path}.png")
-  sleep 10
+  puts ""
 end

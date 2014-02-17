@@ -1,6 +1,7 @@
 require 'mechanize'
 require 'open-uri'
 require 'tempfile'
+require 'digest'
 
 class Webspigot
   attr_accessor :search_phrase, :image_url
@@ -24,6 +25,7 @@ class Webspigot
       # snc- Science
       # m  - Health
       # ir - Spotlight
+
       section = ['b', 'w', 'n', 'tc', 'e', 's', 'snc', 'm', 'ir']
       url = "https://news.google.com/news/section/?section=#{section.sample}"
 
@@ -31,9 +33,7 @@ class Webspigot
       @m.get(url) do |page|
         log "got #{url}"
         page.links.each do |link|
-          if link.text.split.length > 4
-            phrases << link.text
-          end
+          phrases << link.text unless bad_text?(link.text)
         end
       end
       clean_phrases(phrases)
@@ -45,13 +45,24 @@ class Webspigot
   end
 
   def save
-    log "image_url: #{@image_url}"
-    iu = @image_url['?'] ? @image_url[0..@image_url.index('?') - 1] : @image_url
-    #puts "iu: #{iu}"
-    ext = iu[iu.rindex('.')..-1]
-    rnd = (100000 + (99999 * rand)).to_i
-    fname = "/tmp/spigot-#{rnd}#{ext}"
-    #puts "fname: #{fname}"
+    if @image_url.nil? || @image_url.empty?
+      log "can't save, @image_url is blank"
+      return
+    end
+
+    log "image_url (#{@image_url.length}): #{@image_url}"
+    if @image_url['.jpg']
+      ext = '.jpg'
+    elsif @image_url['.gif']
+      ext = '.gif'
+    elsif @image_url['.png']
+      ext = '.png'
+    else
+      ext = '.jpg' # leap of faith
+    end
+    hash = Digest::SHA1.hexdigest(@image_url)
+    fname = "/tmp/spigot-#{hash}#{ext}"
+    log "fname: #{fname}"
     begin
       File.open(fname, 'wb') do |f|
         open(@image_url) do |image|
@@ -60,11 +71,19 @@ class Webspigot
       end
     rescue => e
       log "error: #{e}"
+      fname = ''
     end
     fname
   end
 
   private
+
+  def bad_text?(text)
+    if text.split.length <= 4
+      return true
+    end
+    !! text['Make Google']
+  end
 
   def get_image_url(phrase)
     log "searching '#{phrase}'"
@@ -99,7 +118,10 @@ class Webspigot
     phrases.each do |p|
       p.gsub!(/\[.*?\]/, '')
       p.gsub!(/\(.*?\)/, '')
+      p.gsub!(/[»'"\?]/, '')
+      #p.gsub!(/ /, '')
       p.gsub!(/\s+/, ' ')
+      p.strip!
     end
   end
 
