@@ -31,7 +31,6 @@ class Webspigot
 
       log "GET #{url}"
       @m.get(url) do |page|
-        log "got #{url}"
         page.links.each do |link|
           phrases << link.text unless bad_text?(link.text)
         end
@@ -42,6 +41,7 @@ class Webspigot
       @search_phrase = @options[:search_phrases].sample
     end
     @image_url = get_image_url(@search_phrase)
+    log_url(@image_url, @search_phrase)
   end
 
   def save
@@ -62,7 +62,6 @@ class Webspigot
     end
     hash = Digest::SHA1.hexdigest(@image_url)
     fname = "/tmp/spigot-#{hash}#{ext}"
-    log "fname: #{fname}"
     begin
       File.open(fname, 'wb') do |f|
         open(@image_url) do |image|
@@ -99,27 +98,30 @@ class Webspigot
       end
     end
     u = links.sample
-    if @recent_urls.include?(u)
-      log "dupe: #{u}"
-      retries = 0
-      while retries < @options[:max_retries]
-        u = links.sample
-        break unless @recent_urls.include?(u)
+    unless u.nil? || u.empty?
+      if @recent_urls.include?(u)
         log "dupe: #{u}"
-        retries += 1
+        retries = 0
+        while retries < @options[:max_retries]
+          u = links.sample
+          break unless @recent_urls.include?(u)
+          log "dupe: #{u}"
+          retries += 1
+        end
+        log "lots of dupes!" if retries == @options[:max_retries]
       end
-      log "lots of dupes!" if retries == @options[:max_retries]
+
+      @recent_urls << u
+      @recent_urls.shift if @recent_urls.length > @options[:max_recent_urls]
     end
     u
   end
 
   def clean_phrases(phrases)
-    log "cleaning #{phrases.length} phrases"
     phrases.each do |p|
       p.gsub!(/\[.*?\]/, '')
       p.gsub!(/\(.*?\)/, '')
       p.gsub!(/[»'"\?]/, '')
-      #p.gsub!(/ /, '')
       p.gsub!(/\s+/, ' ')
       p.strip!
     end
@@ -127,5 +129,11 @@ class Webspigot
 
   def log(what)
     puts "<#{caller_locations(1,1)[0].label}> #{what}"
+  end
+
+  def log_url(url, search_phrase)
+    File.open(@options[:urlfile], 'a') do |file|
+      file.puts("#{Time.now} [#{search_phrase}] #{url}")
+    end
   end
 end
