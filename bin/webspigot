@@ -17,7 +17,7 @@ require 'pp'
 }
 
 @optparser = OptionParser.new do |o|
-  o.banner = "Usage: webspigot"
+  o.banner = "Usage: webspigot [options]"
   o.separator ""
   o.separator "WebSpigot fetches random images based on Google News searches."
   o.separator ""
@@ -78,8 +78,6 @@ unless ARGV[0].nil?
   @options[:search_phrases] = ARGV[0].split(';')
 end
 
-puts "options: #{@options}"
-
 ws = Webspigot.new(@options)
 while true
   ws.run
@@ -102,13 +100,23 @@ while true
       end
 
       # blur edges of current image
-      `convert #{image_path} -alpha set -virtual-pixel transparent -channel A -blur 0x8 -level 50%,100% +channel #{image_path}.png`
+      cmd = "convert #{image_path} -alpha set -virtual-pixel transparent -channel A " \
+        "-blur 0x8 -level 50%,100% +channel #{image_path}.png"
+      `#{cmd}`
 
       # compose composite and current image
-      `convert -background black -page #{w}x#{h} #{@options[:outfile]} -page +#{loc[0]}+#{loc[1]} #{image_path}.png -flatten #{@options[:outfile]}`
+      cmd = "convert -background black -page #{w}x#{h} #{@options[:outfile]} " \
+        "-page +#{loc[0]}+#{loc[1]} #{image_path}.png -flatten #{@options[:outfile]}"
+      `#{cmd}`
 
       # add the search phrase
-      `convert #{@options[:outfile]} -pointsize 15 -fill '#000' -draw 'rectangle 0,#{h - 20},#{w},#{w}' -gravity south -stroke '#777C' -strokewidth 2 -annotate 0 "#{ws.search_phrase}" -stroke none -fill white -annotate 0 "    #{ws.search_phrase}    " #{@options[:outfile]}`
+      cmd = "convert #{@options[:outfile]} -pointsize 15 -fill '#000' " \
+        "-draw 'rectangle 0,#{h - 20},#{w},#{w}' -gravity south -stroke '#777C' " \
+        "-strokewidth 2 -annotate 0 \"#{ws.search_phrase}\" -stroke none " \
+        "-fill white -annotate 0 \"    #{ws.search_phrase}    \" #{@options[:outfile]}"
+      `#{cmd}`
+
+      # send it to X?
 
       # cleanup
       Dir.glob("#{image_path}*").each { |f| File.delete(f) }
@@ -117,5 +125,4 @@ while true
     end
     sleep @options[:delay_between_images]
   end
-  puts ""
 end
