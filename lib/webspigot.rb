@@ -29,7 +29,6 @@ class Webspigot
       section = ['b', 'w', 'n', 'tc', 'e', 's', 'snc', 'm', 'ir']
       url = "https://news.google.com/news/section/?section=#{section.sample}"
 
-      log "GET #{url}"
       @m.get(url) do |page|
         page.links.each do |link|
           phrases << link.text unless bad_text?(link.text)
@@ -50,7 +49,7 @@ class Webspigot
       return
     end
 
-    log "image_url (#{@image_url.length}): #{@image_url}"
+    #log "image_url (#{@image_url.length}): #{@image_url}"
     if @image_url['.jpg']
       ext = '.jpg'
     elsif @image_url['.gif']
@@ -132,6 +131,8 @@ class Webspigot
   end
 
   def log_url(url, search_phrase)
+    return if @options[:urlfile].nil?
+
     File.open(@options[:urlfile], 'a') do |file|
       file.puts("#{Time.now} [#{search_phrase}] #{url}")
     end

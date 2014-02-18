@@ -10,8 +10,8 @@ require 'pp'
   monochrome_previous: false,
   search_phrases: [],
   max_retries: 5,
-  outfile: '/tmp/composite.png',
-  urlfile: '/tmp/urls.log',
+  outfile: '/tmp/composite.jpg',
+  urlfile: nil,
   height: 1080,
   width: 1920,
   delay_between_images: 10,
@@ -26,12 +26,10 @@ require 'pp'
 
   o.on('-h', '--help', 'Display this message') { puts o; exit }
 
-  o.on('--height PIXELS', 'The height of the output image') do |height|
-    @options[:height] = height
-  end
-
-  o.on('--width PIXELS', 'The width of the output image') do |width|
-    @options[:width] = height
+  o.on('--size 1920x1080', 'The size of the output image') do |size|
+    w, h = size.split('x')
+    @options[:height] = h.to_i
+    @options[:width] = w.to_i
   end
 
   o.on('--delay SECONDS', 'Delay between images in seconds') do |delay|
@@ -51,7 +49,7 @@ require 'pp'
   end
 
   o.on('--max-retries RETRIES', 'The number of times to retry getting an image') do |retries|
-    @options[:max_retries] = retries
+    @options[:max_retries] = retries.to_i
   end
 
   o.on('--monochrome-previous', 'Convert the previous images to monochrome each time a new image is displayed') do |mono|
@@ -111,7 +109,7 @@ while true
 
       # blur edges of current image
       cmd = "convert #{image_path} -alpha set -virtual-pixel transparent -channel A " \
-        "-blur 0x8 -level 50%,100% +channel #{image_path}.png"
+        "-blur #{@options[:blur_amount]} -level 50%,100% +channel #{image_path}.png"
       `#{cmd}`
 
       # compose composite and current image
@@ -126,6 +124,8 @@ while true
         "-fill white -annotate 0 \"    #{ws.search_phrase}    \" #{@options[:outfile]}"
       `#{cmd}`
 
+      #`feh --bg-fill #{@options[:outfile]}`
+
       # cleanup
       Dir.glob("#{image_path}*").each { |f| File.delete(f) }
     rescue => e
@@ -133,5 +133,4 @@ while true
     end
     sleep @options[:delay_between_images]
   end
-  puts ""
 end
