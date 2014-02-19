@@ -2,6 +2,7 @@ require 'mechanize'
 require 'open-uri'
 require 'tempfile'
 require 'digest'
+require 'api_cache'
 
 class Webspigot
   attr_accessor :search_phrase, :image_url
@@ -31,10 +32,9 @@ class Webspigot
 
       @m.get(url) do |page|
         page.links.each do |link|
-          phrases << link.text unless bad_text?(link.text)
+          phrases << clean_phrase(link.text) unless bad_text?(link.text)
         end
       end
-      clean_phrases(phrases)
       @search_phrase = phrases.sample
     else
       @search_phrase = @options[:search_phrases].sample
@@ -99,12 +99,12 @@ class Webspigot
     u = links.sample
     unless u.nil? || u.empty?
       if @recent_urls.include?(u)
-        log "dupe: #{u}"
+        log "dupe: #{u} (there are #{links.count} links"
         retries = 0
         while retries < @options[:max_retries]
           u = links.sample
           break unless @recent_urls.include?(u)
-          log "dupe: #{u}"
+          log "dupe: #{u} (retry ##{retries}, there are #{links.count} links"
           retries += 1
         end
         log "lots of dupes!" if retries == @options[:max_retries]
@@ -116,14 +116,17 @@ class Webspigot
     u
   end
 
-  def clean_phrases(phrases)
-    phrases.each do |p|
-      p.gsub!(/\[.*?\]/, '')
-      p.gsub!(/\(.*?\)/, '')
-      p.gsub!(/[»'"\?]/, '')
-      p.gsub!(/\s+/, ' ')
-      p.strip!
-    end
+  def clean_phrase(phrase)
+    phrase.gsub!(/.*?:/, '')
+    phrase.gsub!(/\[.*?\]/, '')
+    phrase.gsub!(/\(.*?\)/, '')
+    phrase.gsub!(/[»'"\?]/, '')
+    #phrase.downcase!
+    #phrase.gsub!(/\b(a|for|in|to|the|and|or|at)\b/, '')
+    phrase.gsub!(/\ +/, ' ')
+    phrase.strip!
+    phrase
+    #phrase.split(' ')[0..5].join(' ')
   end
 
   def log(what)
