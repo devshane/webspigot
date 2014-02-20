@@ -89,7 +89,8 @@ class Webspigot
     links = []
     @m.cookie_jar.add(HTTP::Cookie.new('SRCHHPGUSR', "ADLT=#{@options[:safe_mode]}",
                                        domain: '.bing.com', path: '/'))
-    @m.get("http://www.bing.com/images/search?q=#{enc}") do |page|
+    img_size = "&qft=+filterui:imagesize-medium"
+    @m.get("http://www.bing.com/images/search?q=#{enc}#{img_size}") do |page|
       page.body.scan(%r{,imgurl:&quot;(.*?)&quot;}).each do |thing|
         t = thing[0]
         fn = t[t.rindex('/') + 1..-1]
