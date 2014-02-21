@@ -3,11 +3,14 @@ require 'open-uri'
 require 'tempfile'
 require 'digest'
 require 'api_cache'
+require 'logger'
+
 
 class Webspigot
   attr_accessor :search_phrase, :image_url
 
   def initialize(options)
+    @logger = Logger.new(STDOUT)
     @recent_urls = []
     @phrases = {}
     @options = options
@@ -56,7 +59,6 @@ class Webspigot
       return
     end
 
-    #log "image_url (#{@image_url.length}): #{@image_url}"
     if @image_url['.jpg']
       ext = '.jpg'
     elsif @image_url['.gif']
@@ -84,9 +86,7 @@ class Webspigot
   private
 
   def bad_text?(text)
-    if text.split.length <= 4
-      return true
-    end
+    return true if text.split.length <= 4
     !! text['Make Google']
   end
 
@@ -96,7 +96,7 @@ class Webspigot
     links = []
     @m.cookie_jar.add(HTTP::Cookie.new('SRCHHPGUSR', "ADLT=#{@options[:safe_mode]}",
                                        domain: '.bing.com', path: '/'))
-    img_size = "&qft=+filterui:imagesize-medium"
+    img_size = '' #"&qft=+filterui:imagesize-medium"
     @m.get("http://www.bing.com/images/search?q=#{enc}#{img_size}") do |page|
       page.body.scan(%r{,imgurl:&quot;(.*?)&quot;}).each do |thing|
         t = thing[0]
@@ -129,16 +129,13 @@ class Webspigot
     phrase.gsub!(/\[.*?\]/, '')
     phrase.gsub!(/\(.*?\)/, '')
     phrase.gsub!(/[»'"\?]/, '')
-    #phrase.downcase!
-    #phrase.gsub!(/\b(a|for|in|to|the|and|or|at)\b/, '')
     phrase.gsub!(/\ +/, ' ')
     phrase.strip!
     phrase
-    #phrase.split(' ')[0..5].join(' ')
   end
 
   def log(what)
-    puts "<#{caller_locations(1,1)[0].label}> #{what}"
+    @logger.debug("<#{caller_locations(1,1)[0].label}> #{what}")
   end
 
   def log_url(url, search_phrase)
