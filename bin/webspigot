@@ -15,7 +15,9 @@ require 'pp'
   height: 1080,
   width: 1920,
   delay_between_images: 10,
-  max_recent_urls: 200
+  max_recent_urls: 200,
+  cache_period: 600,
+  cache_timeout: 60
 }
 
 @optparser = OptionParser.new do |o|
@@ -42,6 +44,14 @@ require 'pp'
 
   o.on('--blur-previous', 'Blur the previous images each time a new image is displayed') do |blur|
     @options[:blur_previous] = true
+  end
+
+  o.on('--cache-period SECONDS', 'How long to cache the news results') do |secs|
+    @options[:cache_period] = secs
+  end
+
+  o.on('--cache-timeout SECONDS', 'How long to wait for news results') do |secs|
+    @options[:cache_timeout] = secs
   end
 
   o.on('--max-recent-urls URLS', 'The number of recent URLS to use for preventing dupes') do |recents|

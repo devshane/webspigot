@@ -22,4 +22,5 @@ Gem::Specification.new do |gem|
   gem.add_runtime_dependency 'rake', '~> 10.1', '>= 10.1.1'
   gem.add_runtime_dependency 'rspec', '~> 2.14', '>= 2.14.1'
   gem.add_runtime_dependency 'mechanize', '~> 2.7', '>= 2.7.3'
+  gem.add_runtime_dependency 'api_cache', '~> 0.2', '>= 0.2.3'
 end

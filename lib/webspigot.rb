@@ -9,6 +9,7 @@ class Webspigot
 
   def initialize(options)
     @recent_urls = []
+    @phrases = {}
     @options = options
     @m = Mechanize.new
   end
@@ -30,12 +31,18 @@ class Webspigot
       section = ['b', 'w', 'n', 'tc', 'e', 's', 'snc', 'm', 'ir']
       url = "https://news.google.com/news/section/?section=#{section.sample}"
 
-      @m.get(url) do |page|
-        page.links.each do |link|
-          phrases << clean_phrase(link.text) unless bad_text?(link.text)
+      APICache.get(url,
+                   :cache => @options[:cache_period],
+                   :timeout => @options[:cache_timeout]) do
+        log "caching #{url} for #{@options[:cache_period]} seconds"
+        @phrases[url] ||= []
+        @m.get(url) do |page|
+          page.links.each do |link|
+            @phrases[url] << clean_phrase(link.text) unless bad_text?(link.text)
+          end
         end
       end
-      @search_phrase = phrases.sample
+      @search_phrase = @phrases[url].sample
     else
       @search_phrase = @options[:search_phrases].sample
     end
