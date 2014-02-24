@@ -1,7 +1,8 @@
 #!/usr/bin/env ruby
 require 'optparse'
 require 'webspigot'
-require 'pp'
+
+@logger = WsLogger.new
 
 @options = {
   safe_mode: "STRICT",
@@ -10,11 +11,11 @@ require 'pp'
   monochrome_previous: false,
   search_phrases: [],
   max_retries: 5,
-  outfile: '/tmp/composite.jpg',
+  outfile: '/tmp/composite.png',
   urlfile: nil,
   height: 1080,
   width: 1920,
-  delay_between_images: 10,
+  delay_between_images: 30,
   max_recent_urls: 200,
   cache_period: 600,
   cache_timeout: 60
@@ -86,10 +87,21 @@ def usage
   exit
 end
 
-def get_loc(w, h)
-  x = [(w * rand).to_i - 400, 0].max
-  y = [(h * rand).to_i - 400, 0].max
+def get_loc(w, h, sizew, sizeh)
+  x = [(w * rand).to_i - sizew, 0].max
+  y = [(h * rand).to_i - sizeh, 0].max
   [x, y]
+end
+
+def cleanup(image_path)
+  Dir.glob("#{image_path}*").each { |f| File.delete(f) }
+end
+
+def valid_image(w, h)
+  if w <= 100 || h <= 100
+    return false
+  end
+  true
 end
 
 unless ARGV[0].nil?
@@ -98,6 +110,7 @@ end
 
 ws = Webspigot.new(@options)
 while true
+  start = Time.now
   ws.run
   image_path = ws.save
   unless image_path.nil? || image_path.empty?
@@ -105,7 +118,23 @@ while true
       h = @options[:height]
       w = @options[:width]
 
-      loc = get_loc(w, h)
+      size = `identify -format '%[fx:w]x%[fx:h]' #{image_path}`.chomp
+      @logger.debug("image size: #{size}")
+      sizew, sizeh = size.split('x').map { |s| s.to_i }
+
+      unless valid_image(sizew, sizeh)
+        @logger.debug("image is too small [#{size}], skipping it")
+        cleanup(image_path)
+        next
+      end
+
+      loc = get_loc(w, h, sizew, sizeh)
+
+      unless image_path.end_with?('.png')
+        `convert #{image_path} #{image_path}.png`
+        `rm #{image_path}`
+        image_path = "#{image_path}.png"
+      end
 
       # monochrome the composite
       if @options[:monochrome_previous]
@@ -119,27 +148,30 @@ while true
 
       # blur edges of current image
       cmd = "convert #{image_path} -alpha set -virtual-pixel transparent -channel A " \
-        "-blur #{@options[:blur_amount]} -level 50%,100% +channel #{image_path}.png"
+        "-blur #{@options[:blur_amount]} -level 50%,100% +channel #{image_path}"
       `#{cmd}`
 
       # compose composite and current image
       cmd = "convert -background black -page #{w}x#{h} #{@options[:outfile]} " \
-        "-page +#{loc[0]}+#{loc[1]} #{image_path}.png -flatten #{@options[:outfile]}"
+        "-page +#{loc[0]}+#{loc[1]} #{image_path} -flatten #{@options[:outfile]}"
       `#{cmd}`
 
       # add the search phrase
+      diff = '%.2f' % (Time.now - start)
+      pad = " " * 5
+      phrase = "#{pad}#{ws.search_phrase}#{pad}"
       cmd = "convert #{@options[:outfile]} -pointsize 15 -fill '#000' " \
-        "-draw 'rectangle 0,#{h - 20},#{w},#{w}' -gravity south -stroke '#777C' " \
-        "-strokewidth 2 -annotate 0 \"#{ws.search_phrase}\" -stroke none " \
-        "-fill white -annotate 0 \"    #{ws.search_phrase}    \" #{@options[:outfile]}"
+        "-draw 'rectangle 0,#{h - 20},#{w},#{w}' -gravity south " \
+        "-stroke '#777C' -strokewidth 2 -annotate 0 \"#{phrase}\" " \
+        "-stroke none -fill white -annotate 0 \"#{phrase}\" " \
+        "#{@options[:outfile]}"
       `#{cmd}`
 
       #`feh --bg-fill #{@options[:outfile]}`
 
-      # cleanup
-      Dir.glob("#{image_path}*").each { |f| File.delete(f) }
+      cleanup(image_path)
     rescue => e
-      puts "error: #{e}"
+      @logger.error("#{caller_locations(1,1)[0]} #{e}")
     end
     sleep @options[:delay_between_images]
   end

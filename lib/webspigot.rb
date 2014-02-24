@@ -3,14 +3,14 @@ require 'open-uri'
 require 'tempfile'
 require 'digest'
 require 'api_cache'
-require 'logger'
 
+require 'webspigot/ws_logger'
 
 class Webspigot
   attr_accessor :search_phrase, :image_url
 
   def initialize(options)
-    @logger = Logger.new(STDOUT)
+    @logger = WsLogger.new
     @recent_urls = []
     @phrases = {}
     @options = options
@@ -20,20 +20,7 @@ class Webspigot
   def run
     if @options[:search_phrases].empty?
       phrases = []
-
-      # b  - Business
-      # w  - World
-      # n  - US
-      # tc - Technology
-      # e  - Entertainment
-      # s  - Sports
-      # snc- Science
-      # m  - Health
-      # ir - Spotlight
-
-      section = ['b', 'w', 'n', 'tc', 'e', 's', 'snc', 'm', 'ir']
-      url = "https://news.google.com/news/section/?section=#{section.sample}"
-
+      url = get_news_url
       APICache.get(url,
                    :cache => @options[:cache_period],
                    :timeout => @options[:cache_timeout]) do
@@ -44,6 +31,7 @@ class Webspigot
             @phrases[url] << clean_phrase(link.text) unless bad_text?(link.text)
           end
         end
+        log "found #{@phrases.count} phrases"
       end
       @search_phrase = @phrases[url].sample
     else
@@ -53,44 +41,77 @@ class Webspigot
     log_url(@image_url, @search_phrase)
   end
 
-  def save
-    if @image_url.nil? || @image_url.empty?
-      log "can't save, @image_url is blank"
-      return
+  def save(fname=nil)
+    start = Time.now
+    unless Dir.exist?('/tmp/webspigot')
+      Dir.mkdir('/tmp/webspigot')
     end
-
-    if @image_url['.jpg']
-      ext = '.jpg'
-    elsif @image_url['.gif']
-      ext = '.gif'
-    elsif @image_url['.png']
-      ext = '.png'
-    else
-      ext = '.jpg' # leap of faith
-    end
-    hash = Digest::SHA1.hexdigest(@image_url)
-    fname = "/tmp/spigot-#{hash}#{ext}"
-    begin
-      File.open(fname, 'wb') do |f|
-        open(@image_url) do |image|
-          f.write(image.read)
-        end
+    if fname.nil?
+      if @image_url.nil? || @image_url.empty?
+        log "can't save, @image_url is blank"
+        return
       end
-    rescue => e
-      log "error: #{e}"
-      fname = ''
+      log "@image_url #{@image_url}"
+      fname = @image_url.split('/').last
+      fname = fname[0..fname.index('?') - 1] if fname['?']
+      fname = fname[0..fname.index('&') - 1] if fname['&']
+      fname.gsub!(/[()!$,~]/, '')
     end
+    fname = "/tmp/webspigot/#{fname}"
+    log "final #{fname}"
+    File.open(fname, 'wb') do |f|
+      begin
+        open(@image_url) do |image|
+          stuff = image.read
+          f.write(stuff)
+        end
+      rescue OpenURI::HTTPError => e
+        log "error: #{e}"
+      end
+    end
+    log "image saved in #{Time.now - start}s"
     fname
   end
 
   private
 
   def bad_text?(text)
-    return true if text.split.length <= 4
+    return true if text.split.length <= 3
     !! text['Make Google']
   end
 
+  def get_news_url
+    # Google categories
+    # b  - Business
+    # w  - World
+    # n  - US
+    # tc - Technology
+    # e  - Entertainment
+    # s  - Sports
+    # snc- Science
+    # m  - Health
+    # ir - Spotlight
+    news_sites = [{ name: 'Google News',
+                    section: ['b', 'w', 'n', 'tc', 'e', 's', 'snc', 'm', 'ir'],
+                    base_url: 'https://news.google.com/news/section/?section=' },
+                  { name: 'Bing News',
+                    section: ['us+news', 'world+news', 'local', 'entertainment+news',
+                              'science+technology+news', 'business+news', 'political+news',
+                              'sports+news', 'health+news'],
+                    base_url: 'http://www.bing.com/news?q=' },
+                  { name: 'Yahoo News',
+                    section: ['us', 'world', 'politics', 'tech', 'science', 'health',
+                              'odd-news', 'opinion', 'local', 'dear-abby', 'abc-news',
+                              'originals', 'photos'],
+                    base_url: 'http://news.yahoo.com/' }]
+    site = news_sites.sample
+    log "using #{site[:name]}"
+    "#{site[:base_url]}#{site[:section].sample}"
+  end
+
   def get_image_url(phrase)
+    return nil if phrase.nil? || phrase.empty?
+
     log "searching '#{phrase}'"
     enc = URI::encode(phrase)
     links = []
@@ -107,12 +128,12 @@ class Webspigot
     u = links.sample
     unless u.nil? || u.empty?
       if @recent_urls.include?(u)
-        log "dupe: #{u} (there are #{links.count} links"
+        log "dupe: #{u} (there are #{links.count} links)"
         retries = 0
         while retries < @options[:max_retries]
           u = links.sample
           break unless @recent_urls.include?(u)
-          log "dupe: #{u} (retry ##{retries}, there are #{links.count} links"
+          log "dupe: #{u} (retry ##{retries}, there are #{links.count} links)"
           retries += 1
         end
         log "lots of dupes!" if retries == @options[:max_retries]
@@ -129,13 +150,18 @@ class Webspigot
     phrase.gsub!(/\[.*?\]/, '')
     phrase.gsub!(/\(.*?\)/, '')
     phrase.gsub!(/[»'"\?]/, '')
+    phrase.gsub!(/…/, '')
+    phrase.gsub!(/\r/, '')
+    phrase.gsub!(/\n/, '')
+
     phrase.gsub!(/\ +/, ' ')
     phrase.strip!
     phrase
   end
 
   def log(what)
-    @logger.debug("<#{caller_locations(1,1)[0].label}> #{what}")
+    loc = caller_locations(1,1)[0].to_s.match(/`(.*?)'/)[1]
+    @logger.debug("<#{loc}> #{what}")
   end
 
   def log_url(url, search_phrase)
